@@ -11,7 +11,33 @@ export default function Home(){
  const demo=!configured;
  useEffect(()=>{if(!supabase)return;supabase.auth.getUser().then(({data})=>setUser(data.user));const {data:{subscription}}=supabase.auth.onAuthStateChange((_event,session)=>setUser(session?.user??null));return()=>subscription.unsubscribe()},[]);
  useEffect(()=>{if(!supabase||!user)return;loadGroups();loadVenues();const params=new URLSearchParams(location.search);const code=params.get('join');if(code)setJoinCode(code)},[user]);
- useEffect(()=>{if(!supabase||!group)return;loadGroup();const channel=supabase.channel('group-'+group.id).on('postgres_changes',{event:'*',schema:'public',table:'messages',filter:'group_id=eq.'+group.id},()=>loadGroup()).on('postgres_changes',{event:'*',schema:'public',table:'invitations',filter:'group_id=eq.'+group.id},()=>loadGroup()).subscribe();return()=>{supabase.removeChannel(channel)}},[group]);
+
+useEffect(() => {
+  const client = supabase;
+  if (!client || !group) return;
+
+  loadGroup();
+
+  const channel = client
+    .channel('group-' + group.id)
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'messages',
+      filter: 'group_id=eq.' + group.id
+    }, () => loadGroup())
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'invitations',
+      filter: 'group_id=eq.' + group.id
+    }, () => loadGroup())
+    .subscribe();
+
+  return () => {
+    client.removeChannel(channel);
+  };
+}, [group]);
  async function loadGroups(){const {data}=await supabase!.from('group_members').select('groups(id,name,join_code)').eq('user_id',user.id);setGroups((data??[]).flatMap((x:any)=>x.groups?[x.groups]:[]))}
  async function loadVenues(){const {data}=await supabase!.from('venues').select('*').order('name');if(data?.length)setVenues(data)}
  async function loadGroup(){if(!group)return;const [m,i]=await Promise.all([supabase!.from('messages').select('*,profiles(display_name)').eq('group_id',group.id).order('created_at'),supabase!.from('invitations').select('*').eq('group_id',group.id).order('event_at',{ascending:false})]);setMessages(m.data??[]);setInvites(i.data??[])}
